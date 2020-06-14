@@ -1,0 +1,43 @@
+---
+title: "Cancer de mama  \nMachine Learning - PEC 3"
+author: "Pío Alberto Sierra Rodríguez"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+params:
+  data_file: BreastCancer1.csv
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=3.5) 
+```
+
+```{r include = FALSE}
+if(!(require(ggseqlogo)))
+  install.packages("ggseqlogo")
+if(!(require(caret)))
+  install.packages("caret")
+if(!(require(e1071)))
+  install.packages("e1071")
+if(!(require(neuralnet)))
+  install.packages("NeuralNetTools)")
+if(!(require(NeuralNetTools)))
+  install.packages("NeuralNetTools")
+if(!(require(kernlab)))
+  install.packages("kernlab")
+if(!(require(class)))
+  install.packages("class")
+if(!(require(gmodels)))
+  install.packages("gmodels")
+if(!(require(ROCR)))
+  install.packages("ROCR")
+```
+
+```{r}
+datos <- read.csv(params$data_file)
+```
