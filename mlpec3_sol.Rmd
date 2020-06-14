@@ -20,6 +20,8 @@ knitr::opts_chunk$set(echo = TRUE, fig.height=3.5)
 ```{r include = FALSE}
 if(!(require(ggseqlogo)))
   install.packages("ggseqlogo")
+if(!(require(kableExtra)))
+  install.packages("kableExtra")
 if(!(require(caret)))
   install.packages("caret")
 if(!(require(e1071)))
@@ -40,4 +42,21 @@ if(!(require(ROCR)))
 
 ```{r}
 datos <- read.csv(params$data_file)
+```
+
+```{r}
+summary(datos)
+rownames(datos) <- datos$id
+datos <- datos[,-1]
+datos$diagnosis <- factor(datos$diagnosis, levels = c("B", "M"), labels = c("Benign", "Malignant"))
+table(datos$diagnosis)
+boxplot.matrix(as.matrix(datos[,-length(datos)]), las=2)
+
+
+```
+
+Los rangos de las variables son muy variados, con algunos en rangos de decimales y otros en rangos de miles.
+
+```{r}
+
 ```
