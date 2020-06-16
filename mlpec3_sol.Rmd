@@ -8,9 +8,11 @@ output:
   html_document:
     df_print: paged
     toc: yes
+    toc_float: yes
 params:
   data_file: BreastCancer1.csv
-
+  test: !r 1/3
+  positive: Malignant
 ---
 
 ```{r setup, include=FALSE}
@@ -38,6 +40,10 @@ if(!(require(gmodels)))
   install.packages("gmodels")
 if(!(require(ROCR)))
   install.packages("ROCR")
+if(!(require(C50)))
+  install.packages("C50")
+if(!(require(randomForest)))
+  install.packages("randomForest")
 ```
 
 ```{r}
@@ -49,6 +55,7 @@ summary(datos)
 rownames(datos) <- datos$id
 datos <- datos[,-1]
 datos$diagnosis <- factor(datos$diagnosis, levels = c("B", "M"), labels = c("Benign", "Malignant"))
+l <- length(datos)
 table(datos$diagnosis)
 boxplot.matrix(as.matrix(datos[,-length(datos)]), las=2)
 
@@ -57,6 +64,135 @@ boxplot.matrix(as.matrix(datos[,-length(datos)]), las=2)
 
 Los rangos de las variables son muy variados, con algunos en rangos de decimales y otros en rangos de miles.
 
+# Normalización
+
 ```{r}
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+
+datos_n <- as.data.frame(lapply(datos[,-l], normalize))
+boxplot.matrix(as.matrix(datos_n), las=2)
+```
+
+```{r}
+set.seed(12345)
+# Seleccionamos el conjunto de prueba y el resto como conjunto de entrenamiento
+smp_size <- nrow(datos_n) - trunc(nrow(datos) * params$test)
+train_ind <- sample(seq_len(nrow(datos_n)), size = smp_size)
+datos_train <- datos_n[train_ind,]
+datos_test <- datos_n[-train_ind,]
+datos_train_labels <- datos[train_ind, l]
+datos_test_labels <- datos[-train_ind, l]
+
 
 ```
+
+# k-Nearest Neighbour
+
+```{r}
+# Calculamos el valor de k
+k <- trunc(sqrt(nrow(datos_train))) + 1 - nrow(datos_train) %% 2
+# Procedemos a entrenar el modelo
+datos_test_pred <- knn(train = datos_train, test = datos_test, cl = datos_train_labels, k = k)
+```
+
+```{r}
+(cmatrix1 <- caret::confusionMatrix(table(datos_test_pred,datos_test_labels),positive=params$positive))
+```
+
+# Naive Bayes
+
+```{r}
+classifier0 <- naiveBayes(datos_train, datos_train_labels, laplace=0)
+predictions0 <- predict(classifier0, datos_test, type ="class")
+```
+```{r}
+confusionMatrix(predictions0, reference = datos_test_labels, positive = params$positive)
+```
+
+# Artificial Neural Network
+
+```{r}
+# Copiamos los conjuntos de datos para guardar los originales para otros métodos.
+datos_train_ann <- datos_train
+datos_test_ann <- datos_test
+# Convertimos el factor en variables binarias.
+datos_train_ann$M <- datos_train_labels=="Malignant"
+datos_train_ann$B <- datos_train_labels=="Benign"
+datos_test_ann$M <- datos_test_labels=="Malignant"
+datos_test_ann$B <- datos_test_labels=="Benign"
+```
+
+```{r}
+## Creamos la fórmula
+xnam <- names(datos_n)
+fmla <- as.formula(paste("M+B ~ ", paste(xnam, collapse= "+")))
+```
+```{r}
+ann1 <- neuralnet(fmla,
+                          data = datos_train_ann,
+                          hidden=1,linear.output=FALSE)
+
+# visualize the network topology
+plot(ann1, rep='best')
+```
+
+```{r}
+p1 <- predict(ann1, datos_test_ann)
+# model_results_1 <- compute(data_model_1, datos_test)$net.result
+
+# Put multiple binary output to categorical output
+maxidx <- function(arr) {
+  return(which(arr == max(arr)))
+}
+
+idx <- apply(p1, 1, maxidx)
+prediction <- c('Malignant', 'Benign')[idx]
+res <- table(prediction, datos_test_labels )
+
+# Results
+#require(caret)
+(cmatrix1 <- confusionMatrix(res,positive="Malignant"))
+```
+
+
+# Support Vector Machine
+
+```{r}
+datos_train_svn <- cbind(datos_train, datos_train_labels)
+datos_test_svn <- cbind(datos_test, datos_test_labels)
+colnames(datos_train_svn)[l] <- "diagnostic"
+colnames(datos_test_svn)[l] <- "diagnostic"
+# Modelo lineal
+(modeloLineal <- ksvm(diagnostic~.,data=datos_train_svn, kernel='vanilladot'))
+modLineal_pred <- predict(modeloLineal, datos_test_svn)
+
+# Modelo RBF
+(modeloGauss <- ksvm(diagnostic~.,data=datos_train_svn, kernel='rbfdot'))
+modGauss_pred <- predict(modeloGauss, datos_test_svn)
+
+```
+
+```{r}
+res_lineal <- table(modLineal_pred, datos_test_labels)
+res_rbf <- table(modGauss_pred, datos_test_labels)
+(cmatrix_lineal <- caret::confusionMatrix(res_lineal, positive=params$positive))
+(cmatrix_rbf <- caret::confusionMatrix(res_rbf, positive=params$positive))
+```
+
+
+# Arbol de Decisión
+
+```{r}
+ad1 <- C5.0(datos_train, datos_train_labels)
+ad1_p<- predict(ad1, datos_test)
+cf<-confusionMatrix(ad1_p, datos_test_labels, positive = params$positive)
+cf
+
+```
+
+# Random Forest
+
+
+
