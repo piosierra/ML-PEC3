@@ -185,10 +185,48 @@ res_rbf <- table(modGauss_pred, datos_test_labels)
 # Arbol de Decisión
 
 ```{r}
-ad1 <- C5.0(datos_train, datos_train_labels)
+
+matrix_dimensions <- list(c("Benign", "Malignant"), c("Benign", "Malignant"))
+names(matrix_dimensions) <- c("predicted", "actual")
+# Damos un poco más de peso al error de tipo 1. Consideramos que es más peligroso un falso positivo que un falso negativo.
+error_cost <- matrix(c(0, 1, 2, 0), nrow = 2, dimnames = matrix_dimensions)
+error_cost
+ad1 <- C5.0(datos_train, datos_train_labels, trials = 100, costs = error_cost)
 ad1_p<- predict(ad1, datos_test)
 cf<-confusionMatrix(ad1_p, datos_test_labels, positive = params$positive)
 cf
+
+```
+```{r}
+ctrl <- trainControl( method="cv",
+                      number=10,
+                      selectionFunction= "oneSE") 
+                      
+## Parametros de Grid para algortimo de C50
+## trials -> n? de iteraciones boosting 
+grid_C50 <- expand.grid (.model="tree", .trials=c(10,20,30,40),.winnow="FALSE")
+
+
+# ver resultados de expand.grid()
+grid_C50
+
+modeloC5.0     <- train (diagnostic ~ .,
+                  data = datos_train_svn ,
+                  method ="C5.0",
+                  trControl=ctrl,
+                  tuneGrid = grid_C50, 
+#                  metric="Accuracy",
+                  prePoc = c("center", "scale"),
+                  verbose =FALSE,
+                  trace = FALSE
+          )
+modeloC5.0  
+
+# Predicci?n de Clases
+prdClasses <- predict ( modeloC5.0, newdata = datos_test)
+str(prdClasses)
+# Matriz de Confusi?n
+(cf3 <- confusionMatrix( data=prdClasses, datos_test_labels))
 
 ```
 
