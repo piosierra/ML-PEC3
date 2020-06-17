@@ -15,12 +15,13 @@ params:
   test: !r 1/3
   positive: Malignant
   seed: 12345
+bibliography: ml.bib
 ---
 
 ***   
 
 **Parámetros modificables en Knitr:**  
-**data_file**: *ruta completa al archivo de péptidos*  
+**data_file**: *ruta completa al archivo de datos*  
 **test**: *porcentaje a dedicar al conjunto de test [0,1]*  
 **positive**: *factor que utilizar como "positivo" para la matrices de confusión (Malignant, Benign)*  
 **seed**: *semilla aleatoria para seleccionar los conjuntos de prueba y test*  
@@ -29,7 +30,7 @@ params:
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.height=3.5) 
+knitr::opts_chunk$set(echo = TRUE, fig.height=7) 
 ```
 
 ```{r include = FALSE}
@@ -224,8 +225,8 @@ ann1 <- neuralnet(fmla,
                   data = datos_train_ann,
                   hidden = 1,
                   linear.output = FALSE)
-
-plot(ann1, rep = 'best')
+# Para el informe final he creído mejor no incluir los diagramas de las ANN ya que no aportan demasiado.  
+# plot(ann1, rep = 'best')
 ```
 
 ## Predicción y evaluación del algoritmo
@@ -423,8 +424,6 @@ str(prdClasses)
 
 # Discusión sobre el rendimiento
 
-
-
 Modelo | Accuracy | Kappa | F1 | Sensitivity | Specificity
 --------|----------|------|-----|-----|-----
 k-Nearest Neighbour | `r round(cmatrix_knn$overall[1], 3)` | `r round(cmatrix_knn$overall[2], 3)` | `r round(cmatrix_knn$byClass[7], 3)` | `r round(cmatrix_knn$byClass[1], 3)` | `r round(cmatrix_knn$byClass[2], 3)`
@@ -436,3 +435,15 @@ Support Vector Machine RBF (10 fold cv) | `r round(cmatrix_rbf10f$overall[1], 3)
 Árbol de decisión (error costs) (10 fold cv) | `r round(cmatrix_add10f$overall[1], 3)` | `r round(cmatrix_add10f$overall[2], 3)` | `r round(cmatrix_add10f$byClass[7], 3)` | `r round(cmatrix_add10f$byClass[1], 3)` | `r round(cmatrix_add10f$byClass[2], 3)`
 Random Forest (10 fold cv) | `r round(cmatrix_rf$overall[1], 3)` | `r round(cmatrix_rf$overall[2], 3)` | `r round(cmatrix_rf$byClass[7], 3)` | `r round(cmatrix_rf$byClass[1], 3)` | `r round(cmatrix_rf$byClass[2], 3)`
 
+Siguiendo los pasos detallados en *Machine Learning with r* [@lantz_machine_2015], hemos probado algunas otras optimizaciones, como modificaciones del valor de `k` en k-Nearest Neighbour, o distinto número de nodos en la red neuronal, pero en general no es difícil observar una mejora que no sea atribuible a un caso de overfitting. Entiendo que para realizar una evaluación más precisa de los modelos sería conveniente contar con otros conjuntos de prueba con los que poder contrastarlo.  
+Ciñéndonos a los datos obtenidos aquí presentamos en la tabla a continuación las principales métricas para decidir la bondad de los modelos.  
+En términos generales yo consideraría el Support Vector Machine el algoritmo posiblemente más interesante para seguir trabajando con este conjunto de datos. Se trata de una caso que se adapta bastante bien al algoritmo y el caracter multidimensional del problema hacer que sea interesante de atacar con él. Los valores obtenidos de Accuracy y Kappa son buenos, pero aún más interesante me parece el hecho de que lo ha conseguido sin sacrificar Specificity.  
+Es importante entender siempre en cada caso cuál va a ser el uso del clasificador para saber qué ajustes podemos hacer en él y cómo valorarlo. En este caso se me ocurren dos escenarios posibles:  
+1- El clasificador decide si el paciente será sometido a un tratamiento o no.  
+2- El clasificador es una prueba más para diagnosticar si un paciente puede o no tener cáncer.  
+
+Si se trata del primer caso, la prioridad será tener una alta especificidad. Mientras que sí se trata del segundo posiblemente nos interese más fijarnos en la accuracy general. 
+
+En este caso en concreto, aunque su sensibilidad no sea la más alta, escogeríamos SVN con RBF como algoritmo que utilizar y en el que seguir optimizando, dado es el superior en el resto de medidas de rendimiento con un buen balance de las mismas y el añadido de una muy buena especificidad.
+
+# Referencias
