@@ -5,6 +5,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   pdf_document:
     toc: yes
+    number_sections: true
   html_document:
     df_print: paged
     toc: yes
@@ -13,7 +14,19 @@ params:
   data_file: BreastCancer1.csv
   test: !r 1/3
   positive: Malignant
+  seed: 12345
 ---
+
+***   
+
+**Parámetros modificables en Knitr:**  
+**data_file**: *ruta completa al archivo de péptidos*  
+**test**: *porcentaje a dedicar al conjunto de test [0,1]*  
+**positive**: *factor que utilizar como "positivo" para la matrices de confusión (Malignant, Benign)*  
+**seed**: *semilla aleatoria para seleccionar los conjuntos de prueba y test*  
+
+***
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.height=3.5) 
@@ -46,191 +59,380 @@ if(!(require(randomForest)))
   install.packages("randomForest")
 ```
 
+
+
+
+# Lectura y exploración de datos y selección de prueba.
+
+## Lectura de datos
+
+Los datos se tienen que encontrar en formato de archivo separado por coma, en el mismo directorio del proyecto. Se de por supuesto que la primera columna es un identificador de la observación, y que la última es el diagnóstico en forma `M` o `B` y con nombre `diagnosis`. Todas las columnas entre ambas se consideran variables y puede haber cualquier número de ellas.  
+
+
 ```{r}
 datos <- read.csv(params$data_file)
 ```
 
+## Exploración de datos
+
+Comprobamos el contenido del archivo y si existen NAs.  
+
 ```{r}
 summary(datos)
+
+```
+Ponemos como nombres de fila los id de la primera columna y la eliminamos. A continuación convertimos en factor la variable `diagnosis` con los valores `Malignant` y `Benign`.
+
+```{r}
 rownames(datos) <- datos$id
-datos <- datos[,-1]
-datos$diagnosis <- factor(datos$diagnosis, levels = c("B", "M"), labels = c("Benign", "Malignant"))
+datos <- datos[, -1]
+datos$diagnosis <-
+  factor(
+    datos$diagnosis,
+    levels = c("B", "M"),
+    labels = c("Benign", "Malignant")
+  )
 l <- length(datos)
 table(datos$diagnosis)
-boxplot.matrix(as.matrix(datos[,-length(datos)]), las=2)
+```
+
+Comprobamos la distribución de los valores en las distintas variables.  
+
+```{r}
+boxplot.matrix(as.matrix(datos[, -length(datos)]), las = 2)
 
 
 ```
 
-Los rangos de las variables son muy variados, con algunos en rangos de decimales y otros en rangos de miles.
-
-# Normalización
-
+Los rangos de las variables son muy variados, con algunos en rangos de decimales y otros en rangos de miles. Por ese motivo es conveniente normalizarlos para trabajar con la versión normalizada de los datos.  
+Creamos una función de normalización y la aplicamos a los datos, eliminando la última columna de diagnóstico.  
 ```{r}
 normalize <- function(x) {
-return ((x - min(x)) / (max(x) - min(x)))
+  return ((x - min(x)) / (max(x) - min(x)))
 }
 
-datos_n <- as.data.frame(lapply(datos[,-l], normalize))
-boxplot.matrix(as.matrix(datos_n), las=2)
+datos_n <- as.data.frame(lapply(datos[, -l], normalize))
+
+boxplot.matrix(as.matrix(datos_n), las = 2)
 ```
 
+Podemos ver que los datos han quedado correctamente normalizados.  
+
+## Seleccion de los conjuntos de prueba y test.  
+
+Vamos a hacer una sola selección para todos los algoritmos, pero almacenaremos los datos de dos formas distintas según cómo vayan a ser utilizadas por ellos. Algunos de los algoritmos esperan recibir los datos de las variables y las etiquetas por separado. Para ellos creamos los conjuntos `datos_train` `datos_text` `datos_train_labels` y `datos_text_labels`.  
+ 
+
 ```{r}
-set.seed(12345)
+set.seed(params$seed)
 # Seleccionamos el conjunto de prueba y el resto como conjunto de entrenamiento
 smp_size <- nrow(datos_n) - trunc(nrow(datos) * params$test)
 train_ind <- sample(seq_len(nrow(datos_n)), size = smp_size)
-datos_train <- datos_n[train_ind,]
-datos_test <- datos_n[-train_ind,]
+datos_train <- datos_n[train_ind, ]
+datos_test <- datos_n[-train_ind, ]
 datos_train_labels <- datos[train_ind, l]
 datos_test_labels <- datos[-train_ind, l]
-
-
 ```
 
 # k-Nearest Neighbour
 
+## Transformación de datos
+
+n/a
+
+
+## Entrenamiento del modelo
+
+En el caso de kNN en realidad no hay entrenamiento y se obtiene directamente la predicción. Sí podemos calcular el valor óptimo de `k` que aplicaremos después para obtenerla.
+
 ```{r}
 # Calculamos el valor de k
 k <- trunc(sqrt(nrow(datos_train))) + 1 - nrow(datos_train) %% 2
-# Procedemos a entrenar el modelo
-datos_test_pred <- knn(train = datos_train, test = datos_test, cl = datos_train_labels, k = k)
 ```
 
+## Predicción y evaluación del algoritmo
+
 ```{r}
-(cmatrix1 <- caret::confusionMatrix(table(datos_test_pred,datos_test_labels),positive=params$positive))
+# Procedemos a entrenar el modelo
+datos_test_pred <-
+  knn(
+    train = datos_train,
+    test = datos_test,
+    cl = datos_train_labels,
+    k = k
+  )
+(cmatrix_knn <-
+    caret::confusionMatrix(
+      table(datos_test_pred, datos_test_labels),
+      positive = params$positive
+    ))
 ```
 
 # Naive Bayes
 
+## Transformación de datos
+
+n/a
+
+
+## Entrenamiento del modelo
+
 ```{r}
-classifier0 <- naiveBayes(datos_train, datos_train_labels, laplace=0)
-predictions0 <- predict(classifier0, datos_test, type ="class")
+classifier0 <- naiveBayes(datos_train, datos_train_labels, laplace = 0)
 ```
+## Predicción y evaluación del algoritmo
+
 ```{r}
-confusionMatrix(predictions0, reference = datos_test_labels, positive = params$positive)
+predictions0 <- predict(classifier0, datos_test, type = "class")
+(
+  cmatrix_nb <-
+    confusionMatrix(
+      predictions0,
+      reference = datos_test_labels,
+      positive = params$positive
+    )
+)
 ```
 
 # Artificial Neural Network
+
+## Transformación de datos
+
+Para el algoritmo ANN necesitamos que los datos de entrenamiento tengan dos factores codificados como `0` o `1` según el diagnóstico. Procedemos a modificar los datos sin alterar la selección.  
 
 ```{r}
 # Copiamos los conjuntos de datos para guardar los originales para otros métodos.
 datos_train_ann <- datos_train
 datos_test_ann <- datos_test
 # Convertimos el factor en variables binarias.
-datos_train_ann$M <- datos_train_labels=="Malignant"
-datos_train_ann$B <- datos_train_labels=="Benign"
-datos_test_ann$M <- datos_test_labels=="Malignant"
-datos_test_ann$B <- datos_test_labels=="Benign"
+datos_train_ann$M <- datos_train_labels == "Malignant"
+datos_train_ann$B <- datos_train_labels == "Benign"
+datos_test_ann$M <- datos_test_labels == "Malignant"
+datos_test_ann$B <- datos_test_labels == "Benign"
 ```
+
+## Entrenamiento del modelo
+
 
 ```{r}
 ## Creamos la fórmula
 xnam <- names(datos_n)
-fmla <- as.formula(paste("M+B ~ ", paste(xnam, collapse= "+")))
+fmla <- as.formula(paste("M+B ~ ", paste(xnam, collapse = "+")))
 ```
 ```{r}
 ann1 <- neuralnet(fmla,
-                          data = datos_train_ann,
-                          hidden=1,linear.output=FALSE)
+                  data = datos_train_ann,
+                  hidden = 1,
+                  linear.output = FALSE)
 
-# visualize the network topology
-plot(ann1, rep='best')
+plot(ann1, rep = 'best')
 ```
+
+## Predicción y evaluación del algoritmo
 
 ```{r}
 p1 <- predict(ann1, datos_test_ann)
-# model_results_1 <- compute(data_model_1, datos_test)$net.result
 
-# Put multiple binary output to categorical output
+# Convertimos el resultado en categorías para compararlo con los datos de test.
 maxidx <- function(arr) {
   return(which(arr == max(arr)))
 }
-
 idx <- apply(p1, 1, maxidx)
 prediction <- c('Malignant', 'Benign')[idx]
-res <- table(prediction, datos_test_labels )
+res <- table(prediction, datos_test_labels)
 
-# Results
-#require(caret)
-(cmatrix1 <- confusionMatrix(res,positive="Malignant"))
+(cmatrix_ann <- confusionMatrix(res, positive = "Malignant"))
 ```
 
 
 # Support Vector Machine
+
+## Transformación de datos
+
+Necesitamos que el algoritmo incluya una columna con las etiquetas. Para ellos creamos los conjuntos `datos_train_svn` y `datos_test_svn`, con la misma selección de datos pero distinta estructura. 
 
 ```{r}
 datos_train_svn <- cbind(datos_train, datos_train_labels)
 datos_test_svn <- cbind(datos_test, datos_test_labels)
 colnames(datos_train_svn)[l] <- "diagnostic"
 colnames(datos_test_svn)[l] <- "diagnostic"
-# Modelo lineal
-(modeloLineal <- ksvm(diagnostic~.,data=datos_train_svn, kernel='vanilladot'))
-modLineal_pred <- predict(modeloLineal, datos_test_svn)
+```
 
-# Modelo RBF
-(modeloGauss <- ksvm(diagnostic~.,data=datos_train_svn, kernel='rbfdot'))
+## Entrenamiento del modelo
+
+Optamos por entrenar un modelo RBF.  
+```{r}
+
+(modeloGauss <-
+   ksvm(diagnostic ~ ., data = datos_train_svn, kernel = 'rbfdot'))
+```
+
+## Predicción y evaluación del algoritmo
+ 
+```{r}
 modGauss_pred <- predict(modeloGauss, datos_test_svn)
 
 ```
 
 ```{r}
-res_lineal <- table(modLineal_pred, datos_test_labels)
 res_rbf <- table(modGauss_pred, datos_test_labels)
-(cmatrix_lineal <- caret::confusionMatrix(res_lineal, positive=params$positive))
-(cmatrix_rbf <- caret::confusionMatrix(res_rbf, positive=params$positive))
+(cmatrix_rbf <-
+    caret::confusionMatrix(res_rbf, positive = params$positive))
 ```
+Como optimización lo proponemos ahora realizarlo con 10 fold crossvalidation y la librería `caret`. 
 
+```{r}
+svmGrid <- expand.grid(sigma = 2 ^ c(-10, -8), C = 2 ^ c(0, 1))
+model <-
+  caret::train(
+    diagnostic ~ .,
+    data = datos_train_svn,
+    method = 'svmRadial',
+    trControl = trainControl(
+      method = 'cv',
+      number = 10,
+      classProbs = TRUE
+    ),
+    tuneGrid = svmGrid,
+    metric = "Accuracy",
+    trace = FALSE
+  )
+prediction <- predict(model, datos_test_svn)
+res <- table(prediction, datos_test_labels)
+
+(cmatrix_rbf10f <- caret::confusionMatrix(res, positive = "Malignant"))
+
+```
 
 # Arbol de Decisión
 
+## Transformación de datos
+
+n/a
+
+## Entrenamiento del modelo 
+
+Optamos en este caso por crear una matriz de costes que incrementa el peso del error de tipo 1. Es decir, consideramos que es peor que se de un diagnóstico positivo a un paciente sano que un diagnóstico negativo a un paciente enfermo. Esto tiene sentido cuando se trata de tratamientos muy agresivos si la prueba va a considerarse determinante.  
+
 ```{r}
 
-matrix_dimensions <- list(c("Benign", "Malignant"), c("Benign", "Malignant"))
+matrix_dimensions <-
+  list(c("Benign", "Malignant"), c("Benign", "Malignant"))
 names(matrix_dimensions) <- c("predicted", "actual")
 # Damos un poco más de peso al error de tipo 1. Consideramos que es más peligroso un falso positivo que un falso negativo.
-error_cost <- matrix(c(0, 1, 2, 0), nrow = 2, dimnames = matrix_dimensions)
+error_cost <-
+  matrix(c(0, 1, 2, 0), nrow = 2, dimnames = matrix_dimensions)
 error_cost
-ad1 <- C5.0(datos_train, datos_train_labels, trials = 100, costs = error_cost)
-ad1_p<- predict(ad1, datos_test)
-cf<-confusionMatrix(ad1_p, datos_test_labels, positive = params$positive)
-cf
-
+ad1 <-
+  C5.0(datos_train,
+       datos_train_labels,
+       trials = 100,
+       costs = error_cost)
 ```
+## Predicción y evaluación del algoritmo
+
 ```{r}
-ctrl <- trainControl( method="cv",
-                      number=10,
-                      selectionFunction= "oneSE") 
-                      
-## Parametros de Grid para algortimo de C50
-## trials -> n? de iteraciones boosting 
-grid_C50 <- expand.grid (.model="tree", .trials=c(10,20,30,40),.winnow="FALSE")
-
-
-# ver resultados de expand.grid()
-grid_C50
-
-modeloC5.0     <- train (diagnostic ~ .,
-                  data = datos_train_svn ,
-                  method ="C5.0",
-                  trControl=ctrl,
-                  tuneGrid = grid_C50, 
-#                  metric="Accuracy",
-                  prePoc = c("center", "scale"),
-                  verbose =FALSE,
-                  trace = FALSE
-          )
-modeloC5.0  
-
-# Predicci?n de Clases
-prdClasses <- predict ( modeloC5.0, newdata = datos_test)
-str(prdClasses)
-# Matriz de Confusi?n
-(cf3 <- confusionMatrix( data=prdClasses, datos_test_labels))
+ad1_p <- predict(ad1, datos_test)
+(cmatrix_add <-
+    confusionMatrix(ad1_p, datos_test_labels, positive = params$positive))
 
 ```
+Como optimización en este caso probamos a hacerlo también con 10 k-fold crossvalidation. Para ello podemos utilizar los datos tal como habían sido preparados para SVN.  
+
+```{r}
+ctrl <- trainControl(method = "cv",
+                     number = 10,
+                     selectionFunction = "oneSE") 
+                      
+
+grid_C50 <-
+  expand.grid (.model = "tree",
+               .trials = c(10, 20, 30, 40),
+               .winnow = "FALSE")
+
+
+modeloC5.0     <- train (
+  diagnostic ~ .,
+  data = datos_train_svn ,
+  method = "C5.0",
+  trControl = ctrl,
+  tuneGrid = grid_C50,
+  metric = "Accuracy",
+  prePoc = c("center", "scale"),
+  verbose = FALSE,
+  trace = FALSE
+)
+modeloC5.0
+
+prdClasses <- predict (modeloC5.0, newdata = datos_test)
+str(prdClasses)
+
+(cmatrix_add10f <-
+    confusionMatrix(data = prdClasses, datos_test_labels))
+
+```
+
+
 
 # Random Forest
 
+## Transformación de datos
 
+De nuevo podemos utilizar los datos tal como los habíamos preparado para SVN. 
+
+## Entrenamiento del modelo 
+
+En este caso procedemos directamente con la librería `caret` y un modelo de 10 k-fold crossvalidation.
+
+```{r}
+
+rf <- randomForest(diagnostic ~ ., data  = datos_train_svn)
+
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  summaryFunction = defaultSummary,
+  verboseIter = FALSE
+)
+
+grid_rf <- expand.grid(.mtry = c(2, 4, 8, 16))
+
+
+
+
+modelo_rf_caret     <- train (
+  diagnostic ~ .,
+  data = datos_train_svn,
+  method = "rf",
+  trControl = ctrl,
+  tuneGrid = grid_rf,
+  metric = "Accuracy",
+  prePoc = c("center", "scale"),
+  verbose = FALSE,
+  trace = FALSE
+)
+
+
+prdClasses <- predict (modelo_rf_caret, newdata = datos_test_svn)
+str(prdClasses)
+
+(cmatrix_rf <- confusionMatrix(data = prdClasses, datos_test_labels))
+
+
+```
+
+# Discusión sobre el rendimiento
+
+
+
+Modelo | Accuracy | Kappa | F1 | Sensitivity | Specificity
+--------|----------|------|-----|-----|-----
+k-Nearest Neighbour | `r round(cmatrix_knn$overall[1], 3)` | `r round(cmatrix_knn$overall[2], 3)` | `r round(cmatrix_knn$byClass[7], 3)` | `r round(cmatrix_knn$byClass[1], 3)` | `r round(cmatrix_knn$byClass[2], 3)`
+Naive Bayes | `r round(cmatrix_nb$overall[1], 3)` | `r round(cmatrix_nb$overall[2], 3)` | `r round(cmatrix_nb$byClass[7], 3)` | `r round(cmatrix_nb$byClass[1], 3)` | `r round(cmatrix_nb$byClass[2], 3)`
+Red Neuronal de 1 nodo | `r round(cmatrix_ann$overall[1], 3)` | `r round(cmatrix_ann$overall[2], 3)` | `r round(cmatrix_ann$byClass[7], 3)` | `r round(cmatrix_ann$byClass[1], 3)` | `r round(cmatrix_ann$byClass[2], 3)`
+Support Vector Machine RBF| `r round(cmatrix_rbf$overall[1], 3)` | `r round(cmatrix_rbf$overall[2], 3)` | `r round(cmatrix_rbf$byClass[7], 3)` | `r round(cmatrix_rbf$byClass[1], 3)` | `r round(cmatrix_rbf$byClass[2], 3)`
+Support Vector Machine RBF (10 fold cv) | `r round(cmatrix_rbf10f$overall[1], 3)` | `r round(cmatrix_rbf10f$overall[2], 3)` | `r round(cmatrix_rbf10f$byClass[7], 3)` | `r round(cmatrix_rbf10f$byClass[1], 3)` | `r round(cmatrix_rbf10f$byClass[2], 3)`
+Árbol de decisión (error costs) | `r round(cmatrix_add$overall[1], 3)` | `r round(cmatrix_add$overall[2], 3)` | `r round(cmatrix_add$byClass[7], 3)` | `r round(cmatrix_add$byClass[1], 3)` | `r round(cmatrix_add$byClass[2], 3)`
+Árbol de decisión (error costs) (10 fold cv) | `r round(cmatrix_add10f$overall[1], 3)` | `r round(cmatrix_add10f$overall[2], 3)` | `r round(cmatrix_add10f$byClass[7], 3)` | `r round(cmatrix_add10f$byClass[1], 3)` | `r round(cmatrix_add10f$byClass[2], 3)`
+Random Forest (10 fold cv) | `r round(cmatrix_rf$overall[1], 3)` | `r round(cmatrix_rf$overall[2], 3)` | `r round(cmatrix_rf$byClass[7], 3)` | `r round(cmatrix_rf$byClass[1], 3)` | `r round(cmatrix_rf$byClass[2], 3)`
 
